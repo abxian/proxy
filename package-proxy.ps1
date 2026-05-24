@@ -5,21 +5,31 @@
 .DESCRIPTION
   proxy (abxian/proxy) 只作为打包镜像，不在上面开发。
   本脚本把当前分支推到 proxy/main，然后在 proxy 仓库触发构建：
-    - 默认       : dev.yml 构建 Windows x64，产物在 Actions Artifacts。
-    - -Arm64     : 同时构建 Windows ARM64。
-    - -Release   : 按 package.json 版本打 tag 推到 proxy 并触发 release.yml 正式发布。
+    - 默认       : dev.yml 只构建 Windows x64，产物在 Actions Artifacts。
+    - -All       : dev.yml 全平台构建（Win x64/ARM64 + macOS Apple 芯片 + Linux amd64）。
+    - -Arm64     : 额外构建 Windows ARM64。
+    - -Mac       : 额外构建 macOS（Apple 芯片 aarch64）。
+    - -Linux     : 额外构建 Linux amd64。
+    - -Release   : 按 package.json 版本打 tag 推到 proxy，触发 release.yml 正式全平台发布。
     - -NoBuild   : 只同步代码，不触发构建。
     - -Force     : proxy/main 与本地分叉时强制推送（proxy 是镜像，可安全覆盖）。
 
+  注：dev.yml 的 macOS 只出 Apple 芯片版、Linux 只出 amd64；要 Intel Mac / Linux ARM
+  等完整矩阵，用 -Release（release.yml 覆盖更全）。
+
 .EXAMPLE
-  ./package-proxy.ps1                # 同步并出 Windows x64 测试包
-  ./package-proxy.ps1 -Arm64         # 额外出 ARM64
-  ./package-proxy.ps1 -Release       # 正式发布（需先 bump package.json 版本）
+  ./package-proxy.ps1                # 同步并只出 Windows x64 测试包
+  ./package-proxy.ps1 -All           # 全平台测试包
+  ./package-proxy.ps1 -Mac -Linux    # Windows x64 + macOS + Linux
+  ./package-proxy.ps1 -Release       # 正式全平台发布（需先 bump package.json 版本）
   ./package-proxy.ps1 -NoBuild       # 只同步代码
 #>
 param(
   [switch]$Release,
+  [switch]$All,
   [switch]$Arm64,
+  [switch]$Mac,
+  [switch]$Linux,
   [switch]$Force,
   [switch]$NoBuild
 )
@@ -74,15 +84,22 @@ if ($Release) {
   $workflowDesc = "release.yml @ $tag"
 }
 else {
-  $winArm = if ($Arm64) { "true" } else { "false" }
-  Write-Host "==> dev.yml 构建 Windows (x64$(if ($Arm64) { ' + arm64' }))"
+  $runWin    = "true"
+  $runWinArm = if ($All -or $Arm64) { "true" } else { "false" }
+  $runMac    = if ($All -or $Mac)   { "true" } else { "false" }
+  $runLinux  = if ($All -or $Linux) { "true" } else { "false" }
+  $targets = @("Win-x64")
+  if ($runWinArm -eq "true") { $targets += "Win-arm64" }
+  if ($runMac    -eq "true") { $targets += "macOS" }
+  if ($runLinux  -eq "true") { $targets += "Linux" }
+  Write-Host "==> dev.yml 构建: $($targets -join ', ')"
   gh workflow run dev.yml --repo $ProxyRepo --ref main `
-    -f run_windows=true `
-    -f run_windows_arm64=$winArm `
-    -f run_macos_aarch64=false `
-    -f run_linux_amd64=false
+    -f run_windows=$runWin `
+    -f run_windows_arm64=$runWinArm `
+    -f run_macos_aarch64=$runMac `
+    -f run_linux_amd64=$runLinux
   $triggered = ($LASTEXITCODE -eq 0)
-  $workflowDesc = "dev.yml (run_windows=true, arm64=$winArm)"
+  $workflowDesc = "dev.yml ($($targets -join ', '))"
 }
 
 Write-Host ""
