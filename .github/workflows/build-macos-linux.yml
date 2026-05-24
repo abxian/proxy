@@ -64,11 +64,12 @@ jobs:
             id: linux-x64
             os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            bundle: deb,rpm
+            bundle: deb,rpm,appimage
             enabled_input: build_linux_x64
             artifact_glob: |
               target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
               target/x86_64-unknown-linux-gnu/release/bundle/rpm/*.rpm
+              target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
           - name: Windows x64
             id: windows-x64
             os: windows-latest
@@ -120,7 +121,8 @@ jobs:
             libxdo-dev \
             librsvg2-dev \
             patchelf \
-            rpm
+            rpm \
+            libfuse2
 
       - name: Install macOS Intel OpenSSL
         if: matrix.target == 'x86_64-apple-darwin' && github.event.inputs[matrix.enabled_input] == 'true'
