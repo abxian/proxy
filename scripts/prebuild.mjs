@@ -211,6 +211,31 @@ const META_MAP = {
 // =======================
 // Fetch latest versions
 // =======================
+
+// 带指数退避的 fetch：对网络错误和 5xx/429 自动重试，缓解 GitHub releases 的临时 502
+async function fetchWithRetry(url, options = {}, retries = 4, delayMs = 2000) {
+  let lastErr
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(url, options)
+      if (!response.ok && (response.status >= 500 || response.status === 429)) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+      return response
+    } catch (err) {
+      lastErr = err
+      if (attempt < retries) {
+        log_info(
+          `请求 ${url} 第 ${attempt}/${retries} 次失败 (${err.message})，${delayMs}ms 后重试...`,
+        )
+        await new Promise((resolve) => setTimeout(resolve, delayMs))
+        delayMs *= 2
+      }
+    }
+  }
+  throw lastErr
+}
+
 async function getLatestAlphaVersion() {
   if (!FORCE) {
     const cached = await getCachedVersion('META_ALPHA_VERSION')
@@ -228,7 +253,7 @@ async function getLatestAlphaVersion() {
   if (httpProxy) options.agent = new HttpsProxyAgent(httpProxy)
 
   try {
-    const response = await fetch(META_ALPHA_VERSION_URL, {
+    const response = await fetchWithRetry(META_ALPHA_VERSION_URL, {
       ...options,
       method: 'GET',
     })
@@ -262,7 +287,7 @@ async function getLatestReleaseVersion() {
   if (httpProxy) options.agent = new HttpsProxyAgent(httpProxy)
 
   try {
-    const response = await fetch(META_VERSION_URL, {
+    const response = await fetchWithRetry(META_VERSION_URL, {
       ...options,
       method: 'GET',
     })
@@ -328,7 +353,7 @@ async function downloadFile(url, outPath) {
     process.env.https_proxy
   if (httpProxy) options.agent = new HttpsProxyAgent(httpProxy)
 
-  const response = await fetch(url, {
+  const response = await fetchWithRetry(url, {
     ...options,
     method: 'GET',
     headers: { 'Content-Type': 'application/octet-stream' },
