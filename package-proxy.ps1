@@ -62,6 +62,7 @@ if ($NoBuild) {
 }
 
 # 2. 触发构建
+$actionsUrl = "https://github.com/$ProxyRepo/actions"
 if ($Release) {
   $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
   $tag = "v$version"
@@ -69,7 +70,8 @@ if ($Release) {
   if (-not (git tag --list $tag)) { git tag $tag }
   git push $ProxyRemote $tag --force
   gh workflow run release.yml --repo $ProxyRepo --ref $tag
-  Write-Host "已触发 release.yml @ $tag"
+  $triggered = ($LASTEXITCODE -eq 0)
+  $workflowDesc = "release.yml @ $tag"
 }
 else {
   $winArm = if ($Arm64) { "true" } else { "false" }
@@ -79,10 +81,19 @@ else {
     -f run_windows_arm64=$winArm `
     -f run_macos_aarch64=false `
     -f run_linux_amd64=false
-  Write-Host "已触发 dev.yml (run_windows=true, arm64=$winArm)"
+  $triggered = ($LASTEXITCODE -eq 0)
+  $workflowDesc = "dev.yml (run_windows=true, arm64=$winArm)"
 }
 
-$actionsUrl = "https://github.com/$ProxyRepo/actions"
 Write-Host ""
-Write-Host "查看构建进度: $actionsUrl"
-try { Start-Process $actionsUrl } catch {}
+if ($triggered) {
+  Write-Host "✅ 已触发构建：$workflowDesc"
+  Write-Host "查看构建进度: $actionsUrl"
+  try { Start-Process $actionsUrl } catch {}
+}
+else {
+  Write-Warning "代码已同步到 proxy/main，但构建触发失败（多半是网络或 GitHub API 暂时不可用）。"
+  Write-Host "可稍后重跑本脚本，或到 Actions 页面手动运行工作流（分支 main）：$actionsUrl"
+  try { Start-Process $actionsUrl } catch {}
+  exit 1
+}
