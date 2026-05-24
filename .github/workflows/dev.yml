@@ -142,6 +142,36 @@ jobs:
           rustup target list --installed
           echo "Rust target ${{ matrix.target }} installed."
 
+      # 条件化 macOS 签名：配置了 APPLE_CERTIFICATE secret 才把签名变量注入环境，
+      # 否则不注入（空值会让 tauri-action 误尝试导入并失败）。以后有开发者账号，
+      # 只要把 APPLE_* secrets 加到 proxy 仓库即可自动变正式签名，无需改 workflow。
+      - name: Enable macOS signing if certificate configured
+        if: matrix.os == 'macos-latest' && github.event.inputs[matrix.input] == 'true'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -n "$APPLE_CERTIFICATE" ]; then
+            echo "检测到 Apple 证书，启用 macOS 代码签名"
+            {
+              echo "APPLE_CERTIFICATE<<__CERT_EOF__"
+              echo "$APPLE_CERTIFICATE"
+              echo "__CERT_EOF__"
+              echo "APPLE_CERTIFICATE_PASSWORD=$APPLE_CERTIFICATE_PASSWORD"
+              echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY"
+              echo "APPLE_ID=$APPLE_ID"
+              echo "APPLE_PASSWORD=$APPLE_PASSWORD"
+              echo "APPLE_TEAM_ID=$APPLE_TEAM_ID"
+            } >> "$GITHUB_ENV"
+          else
+            echo "未配置 Apple 证书，macOS 构建为未签名（ad-hoc）"
+          fi
+
       - name: Tauri build
         if: github.event.inputs[matrix.input] == 'true'
         uses: tauri-apps/tauri-action@v0
@@ -150,8 +180,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-          # 不传 Apple 证书：proxy 上没有有效的 Developer ID，macOS 走 ad-hoc 无签名
-          # 构建（与 build-macos-linux.yml 一致）。需要正式签名时再补 APPLE_* secrets。
+          # Apple 签名变量由上面的步骤按需注入到 $GITHUB_ENV，这里不直接写，
+          # 没配证书时它们不存在 → macOS 走 ad-hoc 无签名；配了则自动签名。
         with:
           tauriScript: pnpm
           args: --target ${{ matrix.target }} -b ${{ matrix.bundle }}
