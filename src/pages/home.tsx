@@ -219,7 +219,10 @@ const TRAFFIC_RULE_TYPES: TrafficRuleType[] = [
   {
     type: 'PROCESS-NAME',
     label: '进程名',
-    placeholder: '例如 chrome.exe',
+    placeholder:
+      DESKTOP_PLATFORM === 'windows'
+        ? '例如 chrome.exe'
+        : '例如 chrome（Mac/Linux 不带 .exe）',
     domainLike: false,
   },
 ]
