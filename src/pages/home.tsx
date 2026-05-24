@@ -9,6 +9,7 @@ import {
   LanRounded,
   LanguageRounded,
   PowerSettingsNewRounded,
+  RestartAltRounded,
   RuleRounded,
   SettingsRounded,
   ShoppingCartRounded,
@@ -24,6 +25,7 @@ import {
   DialogContent,
   DialogTitle,
   FormControl,
+  FormControlLabel,
   IconButton,
   InputLabel,
   MenuItem,
@@ -177,9 +179,53 @@ type RuleSnapshot = {
 
 type TrafficRuleItem = {
   raw: string
-  domain: string
+  type: string
+  value: string
   policy: string
 }
+
+type TrafficRuleType = {
+  type: string
+  label: string
+  placeholder: string
+  domainLike: boolean
+}
+
+const TRAFFIC_RULE_TYPES: TrafficRuleType[] = [
+  {
+    type: 'DOMAIN-SUFFIX',
+    label: '域名后缀',
+    placeholder: '例如 google.com（含所有子域名）',
+    domainLike: true,
+  },
+  {
+    type: 'DOMAIN',
+    label: '完整域名',
+    placeholder: '例如 www.google.com（精确匹配）',
+    domainLike: true,
+  },
+  {
+    type: 'DOMAIN-KEYWORD',
+    label: '关键词',
+    placeholder: '例如 google（域名里含此词即命中）',
+    domainLike: false,
+  },
+  {
+    type: 'IP-CIDR',
+    label: 'IP 段',
+    placeholder: '例如 192.168.0.0/16',
+    domainLike: false,
+  },
+  {
+    type: 'PROCESS-NAME',
+    label: '进程名',
+    placeholder: '例如 chrome.exe',
+    domainLike: false,
+  },
+]
+
+const ruleTypeLabel = (type: string) =>
+  TRAFFIC_RULE_TYPES.find((item) => item.type === type)?.label || type
 
 class AccessCodeStateError extends Error {
   constructor(
@@ -282,12 +328,13 @@ const parseTrafficRule = (rule: unknown): TrafficRuleItem | null => {
   if (typeof rule !== 'string') return null
   const parts = rule.split(',').map((part) => part.trim())
   if (parts.length < 3) return null
-  if (!['DOMAIN', 'DOMAIN-SUFFIX', 'DOMAIN-KEYWORD'].includes(parts[0])) {
+  if (!TRAFFIC_RULE_TYPES.some((item) => item.type === parts[0])) {
     return null
   }
   return {
     raw: rule,
-    domain: parts[1],
+    type: parts[0],
+    value: parts[1],
     policy: parts[2],
   }
 }
@@ -375,7 +422,11 @@ const HomePage = () => {
   )
   const [codeDialogOpen, setCodeDialogOpen] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [tunStartMode, setTunStartMode] = useState(
+    () => localStorage.getItem('SHENXIANYUN_POWER_START_TUN') === '1',
+  )
   const [trafficRuleOpen, setTrafficRuleOpen] = useState(false)
+  const [trafficRuleType, setTrafficRuleType] = useState('DOMAIN-SUFFIX')
   const [trafficRuleInput, setTrafficRuleInput] = useState('')
   const [trafficRulePolicy, setTrafficRulePolicy] = useState('')
   const [trafficRules, setTrafficRules] = useState<TrafficRuleItem[]>([])
@@ -1002,44 +1053,56 @@ const HomePage = () => {
     const content = await readProfileFile(rulesProfileUid)
     const data = (yaml.load(content) as Record<string, unknown> | null) || {}
     const next = parseTrafficRule(nextAppendRule)
-    const removeSameDomain = (rules: unknown[]) =>
+    const removeSameRule = (rules: unknown[]) =>
       rules.filter((rule) => {
         const parsed = parseTrafficRule(rule)
-        return !parsed || !next || parsed.domain !== next.domain
+        return (
+          !parsed ||
+          !next ||
+          parsed.type !== next.type ||
+          parsed.value !== next.value
+        )
       })
 
     if (Array.isArray(data.prepend)) {
-      data.prepend = removeSameDomain(data.prepend)
+      data.prepend = removeSameRule(data.prepend)
     }
 
     const append = Array.isArray(data.append) ? data.append : []
-    const withoutSameDomain = removeSameDomain(append)
+    const withoutSameRule = removeSameRule(append)
 
-    data.append = [...withoutSameDomain, nextAppendRule]
+    data.append = [...withoutSameRule, nextAppendRule]
     await saveProfileFile(rulesProfileUid, yaml.dump(data, { lineWidth: -1 }))
   }
 
   const addTrafficRule = useLockFn(async () => {
-    const domain = normalizeRuleDomain(trafficRuleInput)
+    const typeMeta = TRAFFIC_RULE_TYPES.find(
+      (item) => item.type === trafficRuleType,
+    )
+    const value = typeMeta?.domainLike
+      ? normalizeRuleDomain(trafficRuleInput)
+      : trafficRuleInput.trim()
     const policy = trafficRulePolicy || selectedNode || primaryGroup?.name || ''
 
-    if (!domain) {
-      setStatus('请输入要分流的网址或域名')
+    if (!value) {
+      setStatus('请输入要分流的内容')
       return
     }
     if (!policy) {
-      setStatus('请选择这个网址要走的节点')
+      setStatus('请选择这条规则要走的节点')
       return
     }
 
     setBusy(true)
     try {
-      await saveTrafficRuleAppend(`DOMAIN-SUFFIX,${domain},${policy}`)
+      await saveTrafficRuleAppend(`${trafficRuleType},${value},${policy}`)
       setTrafficRuleInput('')
       setTrafficRulePolicy(policy)
       await loadTrafficRules()
       await refreshAll()
-      setStatus(`已添加规则：${domain} 走 ${policy}`)
+      setStatus(
+        `已添加规则：${ruleTypeLabel(trafficRuleType)} ${value} 走 ${policy}`,
+      )
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error))
     } finally {
@@ -1062,7 +1125,7 @@ const HomePage = () => {
       await saveProfileFile(rulesProfileUid, yaml.dump(data, { lineWidth: -1 }))
       await loadTrafficRules()
       await refreshAll()
-      setStatus(`已删除规则：${target.domain}`)
+      setStatus(`已删除规则：${ruleTypeLabel(target.type)} ${target.value}`)
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error))
     } finally {
@@ -1447,6 +1510,40 @@ const HomePage = () => {
                         安装 TUN
                       </Button>
                     )}
+                    {isTunModeAvailable && (
+                      <FormControlLabel
+                        sx={{
+                          flex: '1 1 168px',
+                          m: 0,
+                          px: 1,
+                          borderRadius: '8px',
+                          border: '1px solid rgba(70,100,145,.2)',
+                        }}
+                        control={
+                          <Switch
+                            size="small"
+                            checked={tunStartMode}
+                            disabled={busy}
+                            onChange={(_, checked) => {
+                              setTunStartMode(checked)
+                              localStorage.setItem(
+                                'SHENXIANYUN_POWER_START_TUN',
+                                checked ? '1' : '0',
+                              )
+                              setStatus(
+                                checked
+                                  ? '已选 TUN 网卡模式，点启动将用 TUN 接管全部流量'
+                                  : '已切回系统代理模式启动',
+                              )
+                            }}
+                          />
+                        }
+                        label="TUN 网卡模式启动"
+                        slotProps={{
+                          typography: { sx: { fontSize: 13, fontWeight: 700 } },
+                        }}
+                      />
+                    )}
                     {tunOn && (
                       <Button
                         variant="outlined"
@@ -1484,6 +1581,34 @@ const HomePage = () => {
                       sx={{ flex: '1 1 116px' }}
                     >
                       更新订阅
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      color="warning"
+                      startIcon={<RestartAltRounded />}
+                      disabled={busy}
+                      sx={{ flex: '1 1 116px' }}
+                      onClick={async () => {
+                        setBusy(true)
+                        setStatus('正在重启内核...')
+                        try {
+                          await restartCore()
+                          await mutateSystemState()
+                          await invalidateProxyState()
+                          await refreshAll()
+                          setStatus('内核已重启，可重新点击启动')
+                        } catch (error) {
+                          setStatus(
+                            error instanceof Error
+                              ? error.message
+                              : String(error),
+                          )
+                        } finally {
+                          setBusy(false)
+                        }
+                      }}
+                    >
+                      重启内核
                     </Button>
                     <Button
                       variant="outlined"
@@ -1733,16 +1858,36 @@ const HomePage = () => {
             <DialogContent sx={{ pt: 1.5 }}>
               <Stack spacing={1.25}>
                 <Typography sx={{ fontSize: 13, color: 'rgba(36,46,66,.66)' }}>
-                  输入网址或域名，选择要走的节点。比如 google.com
-                  走日本节点，baidu.com 走 DIRECT。
+                  选规则类型、填内容、选要走的节点。比如「域名后缀 google.com
+                  走日本节点」、「关键词 youtube 走日本节点」、「IP 段
+                  192.168.0.0/16 走 DIRECT」。
                 </Typography>
+                <FormControl size="small" fullWidth sx={fieldSx}>
+                  <InputLabel>规则类型</InputLabel>
+                  <Select
+                    label="规则类型"
+                    value={trafficRuleType}
+                    disabled={busy}
+                    onChange={(event) => setTrafficRuleType(event.target.value)}
+                  >
+                    {TRAFFIC_RULE_TYPES.map((item) => (
+                      <MenuItem key={item.type} value={item.type}>
+                        {item.label}（{item.type}）
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                   <TextField
                     fullWidth
                     size="small"
                     sx={fieldSx}
-                    label="网址或域名"
-                    placeholder="例如 google.com 或 https://google.com"
+                    label="匹配内容"
+                    placeholder={
+                      TRAFFIC_RULE_TYPES.find(
+                        (item) => item.type === trafficRuleType,
+                      )?.placeholder || '输入匹配内容'
+                    }
                     value={trafficRuleInput}
                     disabled={busy}
                     onChange={(event) =>
@@ -1802,7 +1947,7 @@ const HomePage = () => {
                   ) : (
                     trafficRules.map((rule) => (
                       <Paper
-                        key={`${rule.domain}-${rule.policy}-${rule.raw}`}
+                        key={rule.raw}
                         elevation={0}
                         sx={{
                           p: 1,
@@ -1817,9 +1962,33 @@ const HomePage = () => {
                           sx={{ alignItems: 'center' }}
                         >
                           <Box sx={{ flex: 1, minWidth: 0 }}>
-                            <Typography sx={{ fontWeight: 850 }}>
-                              {rule.domain}
-                            </Typography>
+                            <Stack
+                              direction="row"
+                              spacing={0.75}
+                              sx={{ alignItems: 'center', minWidth: 0 }}
+                            >
+                              <Chip
+                                size="small"
+                                label={ruleTypeLabel(rule.type)}
+                                sx={{
+                                  height: 20,
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  bgcolor: 'rgba(28,141,255,.12)',
+                                  color: '#1267c4',
+                                }}
+                              />
+                              <Typography
+                                sx={{
+                                  fontWeight: 850,
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {rule.value}
+                              </Typography>
+                            </Stack>
                             <Typography
                               sx={{
                                 fontSize: 12,
