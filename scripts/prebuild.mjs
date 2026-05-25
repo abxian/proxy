@@ -70,8 +70,10 @@ const SIDECAR_HOST = target
 
 const RESOURCES_DIR = path.join(cwd, 'src-tauri', 'resources')
 const SIDECAR_DIR = path.join(cwd, 'src-tauri', 'sidecar')
-// Linux service binaries are bundled as externalBin sidecars (see tauri.linux.conf.json)
-const SERVICE_DIR = platform === 'linux' ? SIDECAR_DIR : RESOURCES_DIR
+// 非 Windows（macOS / Linux）的服务二进制按 externalBin sidecar 方式打包，
+// 落到 Contents/MacOS（与 service.rs 用 current_exe 的查找位置一致）。
+// Windows 仍放 resources（由 dirs::service_path 查找）。
+const SERVICE_DIR = platform === 'win32' ? RESOURCES_DIR : SIDECAR_DIR
 
 // =======================
 // Version Cache
@@ -616,7 +618,8 @@ const SERVICE_BINARIES = [
 
 function serviceFileInfo(name) {
   const ext = platform === 'win32' ? '.exe' : ''
-  const suffix = platform === 'linux' ? '-' + SIDECAR_HOST : ''
+  // macOS/Linux 作为 sidecar 打包，需带 target 三元组后缀；Windows 走 resources，无后缀
+  const suffix = platform === 'win32' ? '' : '-' + SIDECAR_HOST
   return {
     sourceFile: `${name}${ext}`,
     targetFile: `${name}${suffix}${ext}`,
