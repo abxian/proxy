@@ -1,5 +1,5 @@
 use crate::{
-    config::{Config, IVerge},
+    config::{Config, IClashTemp, IVerge},
     core::{CoreManager, manager::RunningMode},
     singleton,
 };
@@ -121,9 +121,16 @@ impl Sysopt {
         let _lock = self.update_lock.lock().await;
 
         let verge = Config::verge().await.latest_arc();
-        let port = match verge.verge_mixed_port {
-            Some(port) => port,
-            None => Config::clash().await.latest_arc().get_mixed_port(),
+        // 系统代理端口必须等于内核实际运行的 mixed-port。订阅可能自带 mixed-port
+        // （例如 7897），与 verge 设置（默认 17897）不一致，这里以运行时配置为准，
+        // 避免把系统代理指向一个内核根本没监听的端口。
+        let runtime_arc = Config::runtime().await.latest_arc();
+        let port = match runtime_arc.config.as_ref() {
+            Some(cfg) => IClashTemp::guard_mixed_port(cfg),
+            None => match verge.verge_mixed_port {
+                Some(port) => port,
+                None => Config::clash().await.latest_arc().get_mixed_port(),
+            },
         };
         let pac_port = IVerge::get_singleton_port();
         let (sys_enable, pac_enable, proxy_host, proxy_guard) = (
