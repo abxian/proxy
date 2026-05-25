@@ -320,16 +320,17 @@ impl IVerge {
             needs_fix = true;
         }
 
-        // 修正后保存配置
-        if config.verge_mixed_port == Some(7897) {
+        // 端口对齐官方默认 7897/7898/7899（订阅下发的也是 7897）。
+        // 把历史上被改成 1789x 的老用户改回默认，避免系统代理端口与内核对不上。
+        if config.verge_mixed_port == Some(17897) {
             config.verge_mixed_port = Some(ports::DEFAULT_MIXED);
             needs_fix = true;
         }
-        if config.verge_socks_port == Some(7898) {
+        if config.verge_socks_port == Some(17898) {
             config.verge_socks_port = Some(ports::DEFAULT_SOCKS);
             needs_fix = true;
         }
-        if config.verge_port == Some(7899) {
+        if config.verge_port == Some(17899) {
             config.verge_port = Some(ports::DEFAULT_HTTP);
             needs_fix = true;
         }
