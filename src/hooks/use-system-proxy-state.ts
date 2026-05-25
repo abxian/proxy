@@ -34,8 +34,12 @@ export const useSystemProxyState = () => {
       return autoproxy.url === `http://${host}:${pacPort}/commands/pac`
     } else {
       if (!sysproxy?.enable) return false
-      const port = verge_mixed_port || clashConfig?.mixedPort || 17897
-      return sysproxy.server === `${host}:${port}`
+      // 跟随内核实际运行端口检测，不写死端口（订阅可能自带不同的 mixed-port）。
+      // 内核端口已知就精确比对；未知时只要系统代理指向本机内核即视为已开。
+      const corePort = clashConfig?.mixedPort || verge_mixed_port
+      return corePort
+        ? sysproxy.server === `${host}:${corePort}`
+        : sysproxy.server.startsWith(`${host}:`)
     }
   })()
 
