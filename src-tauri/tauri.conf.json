@@ -29,7 +29,7 @@
     "devUrl": "http://localhost:3000/",
     "removeUnusedCommands": true
   },
-  "productName": "神仙云",
+  "productName": "Shenxianyun",
   "identifier": "com.jc116.shenxianyun",
   "plugins": {
     "updater": {

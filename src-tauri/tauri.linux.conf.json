@@ -1,6 +1,5 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Shenxianyun",
   "identifier": "com.jc116.shenxianyun",
   "bundle": {
     "targets": ["deb", "rpm"],
