@@ -233,8 +233,8 @@ fn linux_running_as_root() -> bool {
 fn uninstall_service() -> Result<()> {
     logging!(info, Type::Service, "uninstall service");
 
-    let binary_path = dirs::service_path()?;
-    let uninstall_path = binary_path.with_file_name("clash-verge-service-uninstall");
+    let uninstall_path =
+        tauri::utils::platform::current_exe()?.with_file_name("clash-verge-service-uninstall");
 
     if !uninstall_path.exists() {
         bail!(format!("uninstaller not found: {uninstall_path:?}"));
@@ -266,8 +266,8 @@ fn uninstall_service() -> Result<()> {
 fn install_service() -> Result<()> {
     logging!(info, Type::Service, "install service");
 
-    let binary_path = dirs::service_path()?;
-    let install_path = binary_path.with_file_name("clash-verge-service-install");
+    let install_path =
+        tauri::utils::platform::current_exe()?.with_file_name("clash-verge-service-install");
 
     if !install_path.exists() {
         bail!(format!("installer not found: {install_path:?}"));
